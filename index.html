@@ -512,7 +512,7 @@ function sanitizeQuizVisualAnswer(q){
   const ans = String(q.answer ?? q.a ?? '').trim();
   if(!ans) return q;
   const body = String(q.q || '');
-  if(/띠그래프|원그래프/.test(body)) return q;
+  if(/띠그래프|원그래프|꺾은선그래프|막대그래프/.test(body)) return q;
   const next = {...q};
   if(next.q) next.q = replaceAnswerInsideSvg(next.q, ans);
   if(next.visual) next.visual = replaceAnswerInsideSvg(next.visual, ans);
@@ -2191,9 +2191,67 @@ function g_data3_elem(){
 }
 
 // ── 초4: 막대그래프 ──────────────────────────────────────────
+// 여러 항목의 막대그래프: labels(항목명)와 values(수량)로 실제 막대 + 값 라벨을 그림
+function svgBarGraph(labels, values){
+  const w=300, h=190, padL=38, padR=18, padT=20, padB=32;
+  const plotW=w-padL-padR, plotH=h-padT-padB;
+  const maxV=Math.max(...values, 1);
+  const n=values.length;
+  const gap=12;
+  const barW=(plotW-gap*(n-1))/n;
+  const colors=['#2563EB','#10B981','#F59E0B','#EF4444','#8B5CF6'];
+  const bars=values.map((v,i)=>{
+    const bh=(v/maxV)*plotH;
+    const x=padL+i*(barW+gap);
+    const y=padT+plotH-bh;
+    return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" fill="${colors[i%colors.length]}" rx="2"/>`;
+  }).join('');
+  const xLabels=labels.map((lb,i)=>{
+    const x=padL+i*(barW+gap)+barW/2;
+    return `<text x="${x}" y="${h-12}" font-size="11" fill="#64748B" text-anchor="middle">${lb}</text>`;
+  }).join('');
+  const valLabels=values.map((v,i)=>{
+    const bh=(v/maxV)*plotH;
+    const x=padL+i*(barW+gap)+barW/2;
+    return `<text x="${x}" y="${padT+plotH-bh-6}" font-size="11" fill="#1E3A8A" font-weight="700" text-anchor="middle">${v}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" class="q-svg" role="img" aria-label="막대그래프">
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    ${bars}
+    ${valLabels}
+    ${xLabels}
+  </svg>`;
+}
+// 눈금 읽기용 막대그래프: 세로축에 scale 간격 눈금을 긋고, 막대는 정확히 bars칸 높이로 그림
+// (값 라벨은 일부러 안 붙임 - 눈금을 세어서 계산하는 게 이 문제의 핵심 스킬)
+function svgBarGraphScale(scale, bars){
+  const w=220, h=190, padL=45, padR=20, padT=15, padB=30;
+  const plotH=h-padT-padB;
+  const unitH=plotH/(bars+1);
+  const barW=70, barX=padL+35;
+  let grid='', tickLabels='';
+  for(let i=0;i<=bars+1;i++){
+    const y=h-padB-i*unitH;
+    grid+=`<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/>`;
+    tickLabels+=`<text x="${padL-6}" y="${y+3}" font-size="10" fill="#64748B" text-anchor="end">${i*scale}</text>`;
+  }
+  const barTop=h-padB-bars*unitH, barH=bars*unitH;
+  return `<svg viewBox="0 0 ${w} ${h}" class="q-svg" role="img" aria-label="막대그래프 눈금">
+    ${grid}
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    ${tickLabels}
+    <rect x="${barX}" y="${barTop}" width="${barW}" height="${barH}" fill="#2563EB" rx="2"/>
+  </svg>`;
+}
+
 function g_bargraph4(){
   const p=[];
-  p.push(OX("막대그래프에서 막대가 길수록 자료의 수가 많다.",true));
+  const fruits=["사과","배","포도","딸기"];
+  const fc=[ri(10,30),ri(10,30),ri(10,30),ri(10,30)];
+  const fruitSvg=svgBarGraph(fruits,fc);
+  p.push(OX(`${fruitSvg}막대그래프에서 막대가 길수록 자료의 수가 많다.`,true));
   p.push(OX("막대그래프의 눈금은 일정한 간격으로 나타낸다.",true));
   p.push(OX("막대그래프는 시간의 변화를 나타내기에 가장 적합하다.",false));
   p.push(OX("막대그래프에서 각 막대는 한 항목을 나타낸다.",true));
@@ -2202,48 +2260,80 @@ function g_bargraph4(){
   const scales=[2,5,10];
   for(let i=0;i<3;i++){
     const scale=rc(scales),bars=ri(2,10);
-    p.push(SA(`눈금 한 칸이 ${scale}을 나타낼 때, 막대가 ${bars}칸이면 수량은?`,bars*scale,"눈금읽기",`${scale}×${bars}`));
+    p.push(SA(`${svgBarGraphScale(scale,bars)}눈금 한 칸이 ${scale}을 나타낼 때, 막대가 ${bars}칸이면 수량은?`,bars*scale,"눈금읽기",`${scale}×${bars}`));
   }
   // 비교
-  const fruits=["사과","배","포도","딸기"];
-  const fc=[ri(10,30),ri(10,30),ri(10,30),ri(10,30)];
   const maxF=fruits[fc.indexOf(Math.max(...fc))];
   const minF=fruits[fc.indexOf(Math.min(...fc))];
-  p.push(SA(`막대그래프 (사과:${fc[0]}, 배:${fc[1]}, 포도:${fc[2]}, 딸기:${fc[3]})에서 가장 많은 것은?`,maxF,"막대비교"));
-  p.push(SA(`위 막대그래프에서 가장 적은 것은?`,minF,"막대비교"));
-  p.push(SA(`위 막대그래프의 전체 합계는?`,fc.reduce((a,b)=>a+b),"합계"));
+  p.push(SA(`${fruitSvg}막대그래프 (사과:${fc[0]}, 배:${fc[1]}, 포도:${fc[2]}, 딸기:${fc[3]})에서 가장 많은 것은?`,maxF,"막대비교"));
+  p.push(SA(`${fruitSvg}위 막대그래프에서 가장 적은 것은?`,minF,"막대비교"));
+  p.push(SA(`${fruitSvg}위 막대그래프의 전체 합계는?`,fc.reduce((a,b)=>a+b),"합계"));
   // MC
-  p.push(MC("막대그래프에서 세로축의 눈금이 나타내는 것은?",["항목","수량","단위","색깔"],"수량","막대그래프"));
+  p.push(MC(`${fruitSvg}막대그래프에서 세로축의 눈금이 나타내는 것은?`,["항목","수량","단위","색깔"],"수량","막대그래프"));
   p.push(MC("막대그래프를 그릴 때 가장 먼저 해야 할 것은?",["막대 그리기","눈금 정하기","제목 쓰기","자료 조사하기"],"자료 조사하기","막대그래프"));
   const n=rc(NAMES),w=ri(20,50),s=ri(10,w-5);
-  p.push(ST(`${eq()} ${n}이(가) 겨울 방학에 ${w}권, 여름 방학에 ${s}권을 읽었어요. 겨울이 여름보다 몇 권 더 많은가?`,w-s,"문장제"));
+  p.push(ST(`${svgBarGraph(['겨울 방학','여름 방학'],[w,s])}${eq()} ${n}이(가) 겨울 방학에 ${w}권, 여름 방학에 ${s}권을 읽었어요. 겨울이 여름보다 몇 권 더 많은가?`,w-s,"문장제"));
   return balancedQuiz(p);
+}
+
+// 꺾은선그래프: labels(x축 항목)와 values(y값)를 실제 점+선으로 그리고
+// 각 점 옆에 값을 라벨로 표시. 점이 2개~4개 어느 경우든 동작하도록 범용 설계.
+function svgLineGraph(labels, values){
+  const w=300, h=190, padL=38, padR=18, padT=20, padB=32;
+  const plotW=w-padL-padR, plotH=h-padT-padB;
+  const minV=Math.min(...values), maxV=Math.max(...values);
+  const range=Math.max(1, maxV-minV);
+  const n=values.length;
+  const xStep = n>1 ? plotW/(n-1) : 0;
+  const pts = values.map((v,i)=>{
+    const x = padL + i*xStep;
+    const y = padT + plotH - ((v-minV)/range)*plotH;
+    return [x,y];
+  });
+  const pointsStr = pts.map(p=>p.join(',')).join(' ');
+  const dots = pts.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="4" fill="#2563EB"/>`).join('');
+  const xLabels = labels.map((lb,i)=>`<text x="${pts[i][0]}" y="${h-12}" font-size="11" fill="#64748B" text-anchor="middle">${lb}</text>`).join('');
+  const yLabels = pts.map(([x,y],i)=>{
+    const above = i>0 && pts[i][1] < pts[i-1][1];
+    return `<text x="${x}" y="${above ? y-10 : y+18}" font-size="11" fill="#1E3A8A" font-weight="700" text-anchor="middle">${values[i]}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" class="q-svg" role="img" aria-label="꺾은선그래프">
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#94A3B8" stroke-width="1.5"/>
+    <polyline points="${pointsStr}" fill="none" stroke="#EF4444" stroke-width="3"/>
+    ${dots}
+    ${xLabels}
+    ${yLabels}
+  </svg>`;
 }
 
 // ── 초4: 꺾은선그래프 ────────────────────────────────────────
 function g_linegraph4(){
   const p=[];
-  p.push(OX("꺾은선그래프는 변화하는 양을 나타내기에 알맞다.",true));
+  const t1=ri(1,5),t4=ri(10,15),t7=ri(28,35),t10=ri(12,18);
+  const tempSvg=svgLineGraph(['1월','4월','7월','10월'],[t1,t4,t7,t10]);
+  p.push(OX(`${tempSvg}꺾은선그래프는 변화하는 양을 나타내기에 알맞다.`,true));
   p.push(OX("꺾은선그래프는 점을 선으로 연결하여 나타낸다.",true));
   p.push(OX("꺾은선그래프는 각 항목의 비율을 나타내기에 알맞다.",false));
-  p.push(OX("꺾은선그래프에서 선이 올라가면 수량이 증가한다.",true));
+  p.push(OX(`${tempSvg}꺾은선그래프에서 선이 올라가면 수량이 증가한다.`,true));
   p.push(OX("꺾은선그래프에서 선이 내려가면 수량이 감소한다.",true));
   p.push(OX("꺾은선그래프는 시간에 따른 온도 변화를 나타내기에 알맞다.",true));
   p.push(OX("꺾은선그래프의 선이 가파를수록 변화량이 크다.",true));
   // MC
   p.push(MC("꺾은선그래프에서 점과 점을 무엇으로 이어야 하는가?",["곡선","직선","점선","파선"],"직선","꺾은선그래프"));
-  p.push(MC("꺾은선그래프와 막대그래프 중 시간에 따른 변화를 나타내기에 더 적합한 것은?",["막대그래프","꺾은선그래프","원그래프","표"],"꺾은선그래프","비교"));
-  p.push(MC("꺾은선그래프에서 선이 가장 가파르게 올라가면?",["변화가 적다","변화가 크다","변화가 없다","감소한다"],"변화가 크다","꺾은선그래프"));
+  p.push(MC(`${tempSvg}꺾은선그래프에서 선이 가장 가파르게 올라가면?`,["변화가 적다","변화가 크다","변화가 없다","감소한다"],"변화가 크다","꺾은선그래프"));
   // 온도 변화 읽기
-  const t1=ri(1,5),t4=ri(10,15),t7=ri(28,35),t10=ri(12,18);
-  p.push(SA(`월별 기온: 1월${t1}°C, 4월${t4}°C, 7월${t7}°C, 10월${t10}°C 중 가장 높은 달은?`,"7월","꺾은선읽기"));
-  p.push(SA(`위 자료에서 가장 낮은 달은?`,"1월","꺾은선읽기"));
-  p.push(MC("꺾은선그래프에서 점이 오른쪽으로 갈수록 높아지면?",["점점 줄어든다","점점 늘어난다","변화없다","알 수 없다"],"점점 늘어난다","꺾은선그래프"));
-  // 문장제
-  const n=rc(NAMES),y1=ri(10,20),y2=ri(y1+1,30);
-  p.push(ST(`${eq()} ${n}이(가) 지난 달 ${y1}권, 이번 달 ${y2}권을 읽었어요. 꺾은선그래프에서 선의 방향은?`,"올라간다","문장제"));
+  p.push(SA(`${tempSvg}월별 기온을 나타낸 꺾은선그래프입니다. 가장 높은 달은?`,"7월","꺾은선읽기"));
+  p.push(SA(`${tempSvg}위 그래프에서 가장 낮은 달은?`,"1월","꺾은선읽기"));
+  p.push(MC(`${tempSvg}꺾은선그래프에서 점이 오른쪽으로 갈수록 높아지면?`,["점점 줄어든다","점점 늘어난다","변화없다","알 수 없다"],"점점 늘어난다","꺾은선그래프"));
+  // 문장제 — 방향을 자유 서술형이 아니라 객관식으로 물어서 "위로/오른쪽 위로/올라간다" 같은
+  // 동의어 표현 때문에 정답 처리가 안 되는 문제를 원천 차단. 오르내림도 실제로 섞어서 냄.
+  const n=rc(NAMES), y1=ri(15,30);
+  const readUp=Math.random()<0.5;
+  const y2=readUp ? ri(y1+1,y1+10) : ri(Math.max(5,y1-10),y1-1);
+  p.push(MC(`${svgLineGraph(['지난달','이번달'],[y1,y2])}${eq()} ${n}이(가) 지난 달 ${y1}권, 이번 달 ${y2}권을 읽었어요. 꺾은선그래프에서 선의 방향은?`,["올라간다","내려간다","변화 없다","알 수 없다"],readUp?"올라간다":"내려간다","문장제"));
   const n2=rc(NAMES),h1=ri(100,130),h2=h1+ri(5,15);
-  p.push(ST(`📏 ${n2}이(가) 작년 키 ${h1}cm, 올해 키 ${h2}cm이에요. 꺾은선그래프에서 선의 방향은?`,"올라간다","문장제"));
+  p.push(MC(`${svgLineGraph(['작년','올해'],[h1,h2])}📏 ${n2}이(가) 작년 키 ${h1}cm, 올해 키 ${h2}cm이에요. 꺾은선그래프에서 선의 방향은?`,["올라간다","내려간다","변화 없다","알 수 없다"],"올라간다","문장제"));
   return balancedQuiz(p);
 }
 
